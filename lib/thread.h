@@ -25,6 +25,7 @@
 
 #include <zebra.h>
 
+
 struct rusage_t
 {
 #ifdef HAVE_RUSAGE
@@ -44,16 +45,29 @@ struct thread_list
   int count;
 };
 
+#define THREAD_TIMER_USE_SKIPLIST
+
+#ifdef THREAD_TIMER_USE_SKIPLIST
+struct skiplist;
+#endif
+
 /* Master of the theads. */
 struct thread_master
 {
   struct thread_list read;
   struct thread_list write;
+#ifndef THREAD_TIMER_USE_SKIPLIST
   struct thread_list timer;
+#endif
   struct thread_list event;
   struct thread_list ready;
   struct thread_list unuse;
+#ifndef THREAD_TIMER_USE_SKIPLIST
   struct thread_list background;
+#else
+  struct skiplist *skiplist_timer;	/* use instead of timer thread_list */
+  struct skiplist *skiplist_background;
+#endif
   fd_set readfd;
   fd_set writefd;
   fd_set exceptfd;
