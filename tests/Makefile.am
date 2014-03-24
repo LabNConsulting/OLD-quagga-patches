@@ -26,7 +26,7 @@ endif
 
 check_PROGRAMS = testsig testbuffer testmemory heavy heavywq heavythread \
 		testprivs teststream testchecksum tabletest testnexthopiter \
-		$(TESTS_BGPD)
+		testskiplist $(TESTS_BGPD)
 
 noinst_HEADERS = prng.h
 
@@ -46,6 +46,7 @@ testchecksum_SOURCES = test-checksum.c
 testbgpmpath_SOURCES = bgp_mpath_test.c
 tabletest_SOURCES = table_test.c
 testnexthopiter_SOURCES = test-nexthop-iter.c prng.c
+testskiplist_SOURCES = test-skiplist.c
 
 testsig_LDADD = ../lib/libzebra.la @LIBCAP@
 testbuffer_LDADD = ../lib/libzebra.la @LIBCAP@
@@ -63,3 +64,4 @@ testchecksum_LDADD = ../lib/libzebra.la @LIBCAP@
 testbgpmpath_LDADD = ../bgpd/libbgp.a ../lib/libzebra.la @LIBCAP@ -lm
 tabletest_LDADD = ../lib/libzebra.la @LIBCAP@ -lm
 testnexthopiter_LDADD = ../lib/libzebra.la @LIBCAP@
+testskiplist_LDADD = ../lib/libzebra.la
