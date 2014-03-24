@@ -195,6 +195,8 @@ assegment_prepend_asns (struct assegment *seg, as_t asnum, int num)
     return seg; /* we don't do huge prepends */
   
   newas = assegment_data_new (seg->length + num);
+  if (newas == NULL)
+    return seg;
 
   for (i = 0; i < num; i++)
     newas[i] = asnum;
@@ -1862,6 +1864,7 @@ aspath_init (void)
 void
 aspath_finish (void)
 {
+  hash_clean (ashash, (void (*)(void *))aspath_free);
   hash_free (ashash);
   ashash = NULL;
   

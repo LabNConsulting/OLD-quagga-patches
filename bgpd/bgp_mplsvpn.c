@@ -187,10 +187,16 @@ str2prefix_rd (const char *str, struct prefix_rd *prd)
 
   p = strchr (str, ':');
   if (! p)
+    {
+      stream_free(s);
     return 0;
+    }
 
   if (! all_digit (p + 1))
+    {
+      stream_free(s);
     return 0;
+    }
 
   half = XMALLOC (MTYPE_TMP, (p - str) + 1);
   memcpy (half, str, (p - str));
@@ -203,6 +209,7 @@ str2prefix_rd (const char *str, struct prefix_rd *prd)
       if (! all_digit (half))
 	{
 	  XFREE (MTYPE_TMP, half);
+          stream_free(s);
 	  return 0;
 	}
       stream_putw (s, RD_TYPE_AS);
@@ -215,6 +222,7 @@ str2prefix_rd (const char *str, struct prefix_rd *prd)
       if (! ret)
 	{
 	  XFREE (MTYPE_TMP, half);
+          stream_free(s);
 	  return 0;
 	}
       stream_putw (s, RD_TYPE_IP);
@@ -222,6 +230,9 @@ str2prefix_rd (const char *str, struct prefix_rd *prd)
       stream_putw (s, atol (p + 1));
     }
   memcpy (prd->val, s->data, 8);
+
+  XFREE (MTYPE_TMP, half);
+  stream_free(s);
 
   return 1;
 }

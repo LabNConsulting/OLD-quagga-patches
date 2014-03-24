@@ -2985,6 +2985,57 @@ bgp_clear_route_all (struct peer *peer)
       bgp_clear_route (peer, afi, safi, BGP_CLEAR_ROUTE_NORMAL);
 }
 
+/*
+ * Finish freeing things when exiting
+ */
+static void
+bgp_drain_workqueue_immediate(struct work_queue *wq)
+{
+    if (!wq)
+        return;
+
+    if (!wq->thread) {
+        /*
+         * no thread implies no queued items
+         */
+        assert(!wq->items->count);
+        return;
+    }
+
+
+   fprintf(stderr, "%s: draining \"%s\"\n",
+    __func__, wq->name);
+
+    while (wq->items->count) {
+        work_queue_run(wq->thread);
+    }
+}
+
+/*
+ * Special function to process clear node queue when bgpd is exiting
+ * and the thread scheduler is no longer running.
+ */
+void
+bgp_peer_clear_node_queue_drain_immediate(struct peer *peer)
+{
+    if (!peer)
+        return;
+
+    bgp_drain_workqueue_immediate(peer->clear_node_queue);
+}
+
+/*
+ * The work queues are not specific to a BGP instance, but the
+ * items in them refer to BGP instances, so this should be called
+ * before each BGP instance is deleted.
+ */
+void
+bgp_process_queues_drain_immediate(void)
+{
+    bgp_drain_workqueue_immediate(bm->process_main_queue);
+    bgp_drain_workqueue_immediate(bm->process_rsclient_queue);
+}
+
 void
 bgp_clear_adj_in (struct peer *peer, afi_t afi, safi_t safi)
 {
@@ -3054,6 +3105,21 @@ bgp_cleanup_routes (void)
 	      && ri->type == ZEBRA_ROUTE_BGP 
 	      && ri->sub_type == BGP_ROUTE_NORMAL)
 	    bgp_zebra_withdraw (&rn->p, ri,SAFI_UNICAST);
+      table = bgp->rib[AFI_IP][SAFI_MPLS_VPN];
+      for (rn = bgp_table_top (table); rn; rn = bgp_route_next (rn))
+        if (rn->info) 
+          {
+            bgp_table_unlock (rn->info);
+            rn->info = NULL;
+          }
+
+      table = bgp->rib[AFI_IP6][SAFI_MPLS_VPN];
+      for (rn = bgp_table_top (table); rn; rn = bgp_route_next (rn))
+        if (rn->info) 
+          {
+            bgp_table_unlock (rn->info);
+            rn->info = NULL;
+          }
     }
 }
 

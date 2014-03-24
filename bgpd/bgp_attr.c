@@ -204,6 +204,7 @@ cluster_init (void)
 static void
 cluster_finish (void)
 {
+  hash_clean (cluster_hash, (void (*)(void *))cluster_free);
   hash_free (cluster_hash);
   cluster_hash = NULL;
 }
@@ -280,6 +281,7 @@ transit_init (void)
 static void
 transit_finish (void)
 {
+  hash_clean (transit_hash, (void (*)(void *))transit_free);
   hash_free (transit_hash);
   transit_hash = NULL;
 }
@@ -358,8 +360,8 @@ attr_unknown_count (void)
 unsigned int
 attrhash_key_make (void *p)
 {
-  const struct attr *attr = (struct attr *) p;
-  const struct attr_extra *extra = attr->extra;
+  struct attr *attr = (struct attr *) p;
+  struct attr_extra *extra = attr->extra;
   uint32_t key = 0;
 #define MIX(val)	key = jhash_1word(val, key)
 
@@ -397,8 +399,8 @@ attrhash_key_make (void *p)
 
 #ifdef HAVE_IPV6
       MIX(extra->mp_nexthop_len);
-      key = jhash(extra->mp_nexthop_global.s6_addr, 16, key);
-      key = jhash(extra->mp_nexthop_local.s6_addr, 16, key);
+      key = jhash((void *)(extra->mp_nexthop_global.s6_addr), 16, key);
+      key = jhash((void *)(extra->mp_nexthop_local.s6_addr), 16, key);
 #endif /* HAVE_IPV6 */
     }
 
@@ -451,9 +453,20 @@ attrhash_init (void)
   attrhash = hash_create (attrhash_key_make, attrhash_cmp);
 }
 
+/*
+ * special for hash_clean below
+ */
+static void
+attr_vfree(void *attr)
+{
+    bgp_attr_extra_free((struct attr *)attr);
+    XFREE (MTYPE_ATTR, attr);
+}
+
 static void
 attrhash_finish (void)
 {
+  hash_clean(attrhash, attr_vfree);
   hash_free (attrhash);
   attrhash = NULL;
 }
@@ -1108,7 +1121,7 @@ bgp_attr_nexthop (struct bgp_attr_parser_args *args)
   if (IPV4_NET0 (nexthop_h) || IPV4_NET127 (nexthop_h) || IPV4_CLASS_DE (nexthop_h))
     {
       char buf[INET_ADDRSTRLEN];
-      inet_ntop (AF_INET, &nexthop_h, buf, INET_ADDRSTRLEN);
+      inet_ntop (AF_INET, &nexthop_n, buf, INET_ADDRSTRLEN);
       zlog (peer->log, LOG_ERR, "Martian nexthop %s", buf);
       return bgp_attr_malformed (args,
                                  BGP_NOTIFY_UPDATE_INVAL_NEXT_HOP,
