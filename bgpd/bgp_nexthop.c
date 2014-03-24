@@ -589,6 +589,13 @@ bgp_address_init (void)
                                   bgp_address_hash_cmp);
 }
 
+void
+bgp_address_finish (void)
+{
+  hash_free (bgp_address_hash);
+  bgp_address_hash = NULL;
+}
+
 static void
 bgp_address_add (struct prefix *p)
 {
@@ -1466,29 +1473,52 @@ bgp_scan_init (void)
 void
 bgp_scan_finish (void)
 {
+#if 0        /* results in double free */
   /* Only the current one needs to be reset. */
   bgp_nexthop_cache_reset (bgp_nexthop_cache_table[AFI_IP]);
+#endif
 
+  if (cache1_table[AFI_IP])
   bgp_table_unlock (cache1_table[AFI_IP]);
   cache1_table[AFI_IP] = NULL;
 
+  if(cache2_table[AFI_IP])
   bgp_table_unlock (cache2_table[AFI_IP]);
   cache2_table[AFI_IP] = NULL;
 
+  if(bgp_connected_table[AFI_IP])
   bgp_table_unlock (bgp_connected_table[AFI_IP]);
   bgp_connected_table[AFI_IP] = NULL;
 
 #ifdef HAVE_IPV6
+#if 0        /* results in double free */
   /* Only the current one needs to be reset. */
   bgp_nexthop_cache_reset (bgp_nexthop_cache_table[AFI_IP6]);
+#endif
 
+  if(cache1_table[AFI_IP6])
   bgp_table_unlock (cache1_table[AFI_IP6]);
   cache1_table[AFI_IP6] = NULL;
 
+  if(cache2_table[AFI_IP6])
   bgp_table_unlock (cache2_table[AFI_IP6]);
   cache2_table[AFI_IP6] = NULL;
 
+  if(bgp_connected_table[AFI_IP6])
   bgp_table_unlock (bgp_connected_table[AFI_IP6]);
   bgp_connected_table[AFI_IP6] = NULL;
 #endif /* HAVE_IPV6 */
+}
+
+void
+bgp_scan_destroy (void)
+{
+  if (zlookup == NULL)
+      return;
+  THREAD_OFF(bgp_import_thread);
+  THREAD_OFF(bgp_scan_thread);
+  THREAD_OFF(zlookup->t_connect);
+  bgp_scan_finish();
+  zclient_free (zlookup);
+  zlookup = NULL;
 }
