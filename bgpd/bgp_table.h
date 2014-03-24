@@ -282,6 +282,20 @@ bgp_node_match_ipv6 (const struct bgp_table *table, struct in6_addr *addr)
 static inline unsigned long
 bgp_table_count (const struct bgp_table *const table)
 {
+  if (table->safi == SAFI_MPLS_VPN || table->safi == SAFI_ENCAP) {
+    struct bgp_node    *rn;
+    unsigned long      count = 0;
+
+    for (rn = bgp_table_top(table); rn; rn = bgp_route_next (rn)) {
+      struct bgp_table *rd_table;
+
+      if ((rd_table = rn->info)) {
+       count += route_table_count(rd_table->route_table);
+      }
+    }
+    return count;
+  }
+
   return route_table_count (table->route_table);
 }
 
