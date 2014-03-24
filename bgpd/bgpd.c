@@ -54,6 +54,7 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #include "bgpd/bgp_nexthop.h"
 #include "bgpd/bgp_damp.h"
 #include "bgpd/bgp_mplsvpn.h"
+#include "bgpd/bgp_encap.h"
 #include "bgpd/bgp_advertise.h"
 #include "bgpd/bgp_network.h"
 #include "bgpd/bgp_vty.h"
@@ -1336,8 +1337,11 @@ peer_group_active (struct peer *peer)
   if (peer->af_group[AFI_IP][SAFI_UNICAST]
       || peer->af_group[AFI_IP][SAFI_MULTICAST]
       || peer->af_group[AFI_IP][SAFI_MPLS_VPN]
+      || peer->af_group[AFI_IP][SAFI_ENCAP]
       || peer->af_group[AFI_IP6][SAFI_UNICAST]
-      || peer->af_group[AFI_IP6][SAFI_MULTICAST])
+      || peer->af_group[AFI_IP6][SAFI_MULTICAST]
+      || peer->af_group[AFI_IP6][SAFI_MPLS_VPN]
+      || peer->af_group[AFI_IP6][SAFI_ENCAP])
     return 1;
   return 0;
 }
@@ -2237,8 +2241,11 @@ peer_active (struct peer *peer)
   if (peer->afc[AFI_IP][SAFI_UNICAST]
       || peer->afc[AFI_IP][SAFI_MULTICAST]
       || peer->afc[AFI_IP][SAFI_MPLS_VPN]
+      || peer->afc[AFI_IP][SAFI_ENCAP]
       || peer->afc[AFI_IP6][SAFI_UNICAST]
-      || peer->afc[AFI_IP6][SAFI_MULTICAST])
+      || peer->afc[AFI_IP6][SAFI_MULTICAST]
+      || peer->afc[AFI_IP6][SAFI_MPLS_VPN]
+      || peer->afc[AFI_IP6][SAFI_ENCAP])
     return 1;
   return 0;
 }
@@ -2250,8 +2257,11 @@ peer_active_nego (struct peer *peer)
   if (peer->afc_nego[AFI_IP][SAFI_UNICAST]
       || peer->afc_nego[AFI_IP][SAFI_MULTICAST]
       || peer->afc_nego[AFI_IP][SAFI_MPLS_VPN]
+      || peer->afc[AFI_IP][SAFI_ENCAP]
       || peer->afc_nego[AFI_IP6][SAFI_UNICAST]
-      || peer->afc_nego[AFI_IP6][SAFI_MULTICAST])
+      || peer->afc_nego[AFI_IP6][SAFI_MULTICAST]
+      || peer->afc[AFI_IP6][SAFI_MPLS_VPN]
+      || peer->afc[AFI_IP6][SAFI_ENCAP])
     return 1;
   return 0;
 }
@@ -5082,6 +5092,8 @@ bgp_config_write_peer (struct vty *vty, struct bgp *bgp,
 	     (CHECK_FLAG (peer->af_flags[afi][safi], PEER_FLAG_MED_UNCHANGED)) ?
 	     " med" : "", VTY_NEWLINE);
     }
+    if (afi == AFI_IP && safi == SAFI_UNICAST)
+      vty_out (vty, "!%s", VTY_NEWLINE); /* separate top-level neighbors for readability */
 }
 
 /* Display "address-family" configuration header. */
@@ -5095,21 +5107,30 @@ bgp_config_write_family_header (struct vty *vty, afi_t afi, safi_t safi,
   if (afi == AFI_IP && safi == SAFI_UNICAST)
     return;
 
-  vty_out (vty, "!%s address-family ", VTY_NEWLINE);
+  vty_out (vty, " address-family ");
 
   if (afi == AFI_IP)
     {
       if (safi == SAFI_MULTICAST)
 	vty_out (vty, "ipv4 multicast");
       else if (safi == SAFI_MPLS_VPN)
-	vty_out (vty, "vpnv4 unicast");
+	vty_out (vty, "vpnv4");
+      else if (safi == SAFI_ENCAP)
+	vty_out (vty, "encap");
     }
   else if (afi == AFI_IP6)
     {
-      vty_out (vty, "ipv6");
       
+      if (safi == SAFI_MPLS_VPN)
+       vty_out (vty, "vpnv6");
+      else if (safi == SAFI_ENCAP)
+       vty_out (vty, "encapv6");
+      else
+	{
+          vty_out (vty, "ipv6");
       if (safi == SAFI_MULTICAST)
         vty_out (vty, " multicast");
+    }
     }
 
   vty_out (vty, "%s", VTY_NEWLINE);
@@ -5154,7 +5175,7 @@ bgp_config_write_family (struct vty *vty, struct bgp *bgp, afi_t afi,
   bgp_config_write_maxpaths (vty, bgp, afi, safi, &write);
 
   if (write)
-    vty_out (vty, " exit-address-family%s", VTY_NEWLINE);
+    vty_out (vty, " exit-address-family%s!%s", VTY_NEWLINE, VTY_NEWLINE);
 
   return write;
 }
@@ -5342,11 +5363,20 @@ bgp_config_write (struct vty *vty)
       /* IPv4 VPN configuration.  */
       write += bgp_config_write_family (vty, bgp, AFI_IP, SAFI_MPLS_VPN);
 
+      /* ENCAPv4 configuration.  */
+      write += bgp_config_write_family (vty, bgp, AFI_IP, SAFI_ENCAP);
+
       /* IPv6 unicast configuration.  */
       write += bgp_config_write_family (vty, bgp, AFI_IP6, SAFI_UNICAST);
 
       /* IPv6 multicast configuration.  */
       write += bgp_config_write_family (vty, bgp, AFI_IP6, SAFI_MULTICAST);
+
+      /* IPv6 VPN configuration.  */
+      write += bgp_config_write_family (vty, bgp, AFI_IP6, SAFI_MPLS_VPN);
+
+      /* ENCAPv6 configuration.  */
+      write += bgp_config_write_family (vty, bgp, AFI_IP6, SAFI_ENCAP);
 
       write++;
     }
@@ -5385,6 +5415,7 @@ bgp_init (void)
   bgp_address_init ();
   bgp_scan_init ();
   bgp_mplsvpn_init ();
+  bgp_encap_init ();
 
   /* Access list initialize. */
   access_list_init ();

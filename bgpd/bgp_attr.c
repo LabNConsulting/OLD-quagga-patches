@@ -1513,11 +1513,39 @@ bgp_mp_reach_parse (struct bgp_attr_parser_args *args,
       stream_get (&attre->mp_nexthop_global_in, s, 4);
       break;
 #ifdef HAVE_IPV6
+    case 24:
+      {
+	u_int32_t rd_high;
+	u_int32_t rd_low;
+
+	rd_high = stream_getl (s);
+	rd_low = stream_getl (s);
+      }
+      /* fall through */
     case 16:
       stream_get (&attre->mp_nexthop_global, s, 16);
       break;
     case 32:
+    case 48:
+      if (attre->mp_nexthop_len == 48)
+	{
+	  u_int32_t rd_high;
+	  u_int32_t rd_low;
+
+	  rd_high = stream_getl (s);
+	  rd_low = stream_getl (s);
+	}
       stream_get (&attre->mp_nexthop_global, s, 16);
+
+      if (attre->mp_nexthop_len == 48)
+	{
+	  u_int32_t rd_high;
+	  u_int32_t rd_low;
+
+	  rd_high = stream_getl (s);
+	  rd_low = stream_getl (s);
+	}
+
       stream_get (&attre->mp_nexthop_local, s, 16);
       if (! IN6_IS_ADDR_LINKLOCAL (&attre->mp_nexthop_local))
 	{
@@ -1566,7 +1594,7 @@ bgp_mp_reach_parse (struct bgp_attr_parser_args *args,
  
   if (safi != SAFI_MPLS_LABELED_VPN)
     {
-      ret = bgp_nlri_sanity_check (peer, afi, stream_pnt (s), nlri_len);
+      ret = bgp_nlri_sanity_check (peer, afi, safi, stream_pnt (s), nlri_len);
       if (ret < 0) 
         {
           zlog_info ("%s: (%s) NLRI doesn't pass sanity check",
@@ -1612,7 +1640,7 @@ bgp_mp_unreach_parse (struct bgp_attr_parser_args *args,
 
   if (safi != SAFI_MPLS_LABELED_VPN)
     {
-      ret = bgp_nlri_sanity_check (peer, afi, stream_pnt (s), withdraw_len);
+      ret = bgp_nlri_sanity_check (peer, afi, safi, stream_pnt (s), withdraw_len);
       if (ret < 0)
 	return BGP_ATTR_PARSE_ERROR;
     }
@@ -2144,7 +2172,9 @@ bgp_packet_attribute (struct bgp *bgp, struct peer *peer,
       send_as4_path = 1; /* we'll do this later, at the correct place */
   
   /* Nexthop attribute. */
-  if (attr->flag & ATTR_FLAG_BIT (BGP_ATTR_NEXT_HOP) && afi == AFI_IP)
+  if (attr->flag & ATTR_FLAG_BIT (BGP_ATTR_NEXT_HOP) &&
+    afi == AFI_IP &&
+    safi ==  SAFI_UNICAST )    /* only write NH attr for unicast safi */
     {
       stream_putc (s, BGP_ATTR_FLAG_TRANS);
       stream_putc (s, BGP_ATTR_NEXT_HOP);
@@ -2286,7 +2316,7 @@ bgp_packet_attribute (struct bgp *bgp, struct peer *peer,
 
 #ifdef HAVE_IPV6
   /* If p is IPv6 address put it into attribute. */
-  if (p->family == AF_INET6)
+  if (p->family == AF_INET6 && (safi == SAFI_UNICAST))
     {
       unsigned long sizep;
       struct attr_extra *attre = attr->extra;
@@ -2373,6 +2403,87 @@ bgp_packet_attribute (struct bgp *bgp, struct peer *peer,
       /* Set MP attribute length. */
       stream_putc_at (s, sizep, (stream_get_endp (s) - sizep) - 1);
     }
+
+#ifdef HAVE_IPV6
+  if (p->family == AF_INET6 && safi == SAFI_MPLS_VPN)
+    {
+      unsigned long sizep;
+      struct attr_extra *attre = attr->extra;
+
+      stream_putc (s, BGP_ATTR_FLAG_OPTIONAL);
+      stream_putc (s, BGP_ATTR_MP_REACH_NLRI);
+      sizep = stream_get_endp (s);
+      stream_putc (s, 0);      /* Length of this attribute. */
+      stream_putw (s, AFI_IP6);        /* AFI */
+      stream_putc (s, BGP_SAFI_VPN);   /* SAFI */
+
+      if (attre->mp_nexthop_len == 16) {
+          stream_putc (s, 24);
+          stream_put (s, prd->val, 8);
+         stream_put (s, &attre->mp_nexthop_global, 16);
+      } else if (attre->mp_nexthop_len == 32) {
+          stream_putc (s, 48);
+          stream_put (s, prd->val, 8);
+         stream_put (s, &attre->mp_nexthop_global, 16);
+          stream_put (s, prd->val, 8);
+         stream_put (s, &attre->mp_nexthop_local, 16);
+      }
+
+      /* SNPA */
+      stream_putc (s, 0);
+
+      /* Tag, RD, Prefix write. */
+      stream_putc (s, p->prefixlen + 88);
+      stream_put (s, tag, 3);
+      stream_put (s, prd->val, 8);
+      stream_put (s, &p->u.prefix, PSIZE (p->prefixlen));
+
+      /* Set MP attribute length. */
+      stream_putc_at (s, sizep, (stream_get_endp (s) - sizep) - 1);
+    }
+#endif
+
+  if ((p->family == AF_INET
+#ifdef HAVE_IPV6
+  || p->family == AF_INET6
+#endif
+  ) && safi == SAFI_ENCAP)
+    {
+      unsigned long sizep;
+
+      assert (attr->extra);
+
+      stream_putc (s, BGP_ATTR_FLAG_OPTIONAL);
+      stream_putc (s, BGP_ATTR_MP_REACH_NLRI);
+      sizep = stream_get_endp (s);
+      stream_putc (s, 0);      /* Length of this attribute. */
+      stream_putw (s, family2afi(p->family));  /* AFI */
+      stream_putc (s, SAFI_ENCAP);     /* SAFI */
+
+      switch (attr->extra->mp_nexthop_len) {
+       case 4:
+       default:
+         stream_putc (s, 4);
+         stream_put (s, &attr->extra->mp_nexthop_global_in, 4);
+         break;
+#ifdef HAVE_IPV6
+       case 16:
+         stream_putc (s, 16);
+         stream_put (s, &attr->extra->mp_nexthop_global, 16);
+         break;
+#endif
+      }
+
+      /* SNPA (i.e., Reserved 0 ) */
+      stream_putc (s, 0);
+
+      stream_put_prefix (s, p);
+
+      /* Set MP attribute length. */
+      stream_putc_at (s, sizep, (stream_get_endp (s) - sizep) - 1);
+    }
+
+
 
   /* Extended Communities attribute. */
   if (CHECK_FLAG (peer->af_flags[afi][safi], PEER_FLAG_SEND_EXT_COMMUNITY) 
