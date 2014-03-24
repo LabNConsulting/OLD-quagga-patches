@@ -3153,21 +3153,6 @@ bgp_cleanup_routes (void)
 		   bgp_unlock_node(rn);
                 }
 	}
-      table = bgp->rib[AFI_IP][SAFI_MPLS_VPN];
-      for (rn = bgp_table_top (table); rn; rn = bgp_route_next (rn))
-        if (rn->info) 
-          {
-            bgp_table_unlock (rn->info);
-            rn->info = NULL;
-          }
-
-      table = bgp->rib[AFI_IP6][SAFI_MPLS_VPN];
-      for (rn = bgp_table_top (table); rn; rn = bgp_route_next (rn))
-        if (rn->info) 
-          {
-            bgp_table_unlock (rn->info);
-            rn->info = NULL;
-          }
     }
 }
 
