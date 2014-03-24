@@ -5,6 +5,7 @@
 
 #include <sys/types.h>
 #include <stdio.h>
+#include <stdint.h>
 #include "lib/skiplist.h"
 
 struct thread_master *master;

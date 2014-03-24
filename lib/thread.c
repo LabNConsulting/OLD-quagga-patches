@@ -57,6 +57,9 @@ static unsigned short timers_inited;
 
 static struct hash *cpu_record = NULL;
 
+#define TIME_T_MAX ((sizeof(time_t) == 64)? INT64_MAX:	\
+    ((sizeof(time_t) == 32)? INT32_MAX: INT16_MAX) )
+
 /* Struct timeval's tv_usec one second value.  */
 #define TIMER_SECOND_MICRO 1000000L
 
@@ -848,6 +851,8 @@ funcname_thread_add_timer_timeval (struct thread_master *m,
   /* Do we need jitter here? */
   quagga_get_relative (NULL);
   alarm_time.tv_sec = relative_time.tv_sec + time_relative->tv_sec;
+  if (alarm_time.tv_sec < 0)
+    alarm_time.tv_sec = TIME_T_MAX;
   alarm_time.tv_usec = relative_time.tv_usec + time_relative->tv_usec;
 
   thread->u.sands = timeval_adjust(alarm_time);
